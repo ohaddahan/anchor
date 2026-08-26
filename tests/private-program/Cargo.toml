@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "programs/private-program-fixture",
+    "programs/private-program-manifest",
+    "programs/private-program-secondary",
+    "runtime-tests",
+]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true

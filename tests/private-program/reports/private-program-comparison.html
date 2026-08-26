@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23080b0d'/%3E%3Cpath d='M16 45 30 14h8L24 45zm18 0 8-18h7l-8 18z' fill='%23c9ff45'/%3E%3C/svg%3E">
+  <title>Anchor Private Build — Forensic Comparison</title>
+  <style>
+    :root { --ink:#080b0d; --paper:#e8e4d8; --muted:#98a09e; --line:#293137; --acid:#c9ff45; --ember:#ff6b35; --cyan:#61dafb; }
+    * { box-sizing:border-box; }
+    html { background:var(--ink); scroll-behavior:smooth; }
+    body { margin:0; color:var(--paper); font-family:"Azeret Mono","IBM Plex Mono","Courier New",monospace; background:radial-gradient(circle at 86% 5%,rgba(201,255,69,.13),transparent 26rem),radial-gradient(circle at 10% 42%,rgba(97,218,251,.08),transparent 30rem),linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),var(--ink); background-size:auto,auto,34px 34px,34px 34px,auto; }
+    body:before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.22; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.13'/%3E%3C/svg%3E"); }
+    main { width:min(1180px,calc(100% - 32px)); margin:auto; padding:28px 0 80px; }
+    .mast { border-top:1px solid var(--paper); display:grid; grid-template-columns:1fr auto; gap:20px; padding:14px 0 72px; color:var(--muted); font-size:11px; letter-spacing:.12em; text-transform:uppercase; }
+    .hero { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr); gap:48px; align-items:end; padding-bottom:64px; }
+    .kicker { color:var(--acid); font-size:12px; letter-spacing:.22em; text-transform:uppercase; }
+    h1,h2 { font-family:"Bodoni Moda","Iowan Old Style","Palatino Linotype",serif; font-weight:500; letter-spacing:-.045em; }
+    h1 { margin:18px 0 22px; font-size:clamp(54px,9vw,118px); line-height:.82; max-width:850px; }
+    h1 em { color:var(--acid); font-style:italic; }
+    .dek { max-width:690px; color:#bcc3c0; font:15px/1.7 "Azeret Mono","IBM Plex Mono",monospace; }
+    .hero-stat { border-left:1px solid var(--line); padding-left:28px; }
+    .hero-stat strong { display:block; color:var(--acid); font-family:"Bodoni Moda","Iowan Old Style",serif; font-size:clamp(72px,7.5vw,104px); font-weight:500; line-height:.75; letter-spacing:-.07em; white-space:nowrap; }
+    .hero-stat span { display:block; margin-top:18px; color:var(--muted); font-size:11px; letter-spacing:.14em; text-transform:uppercase; }
+    .rule { height:7px; background:linear-gradient(90deg,var(--acid) 0 var(--size-width),var(--line) var(--size-width)); margin:22px 0 8px; }
+    .section { border-top:1px solid var(--line); padding:54px 0; }
+    .section-head { display:grid; grid-template-columns:150px 1fr; gap:24px; margin-bottom:34px; }
+    .index { color:var(--acid); font-size:12px; letter-spacing:.18em; }
+    h2 { margin:0; font-size:clamp(34px,5vw,66px); line-height:.95; }
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); }
+    .card { background:#0c1013; padding:24px; min-height:176px; }
+    .card .label { color:var(--muted); font-size:10px; letter-spacing:.13em; text-transform:uppercase; }
+    .card strong { display:block; margin:25px 0 6px; color:var(--paper); font-family:"Bodoni Moda","Iowan Old Style",serif; font-size:42px; font-weight:500; letter-spacing:-.04em; }
+    .card .delta,.gain { color:var(--acid); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { border-bottom:1px solid var(--line); padding:15px 12px; text-align:right; }
+    th:first-child,td:first-child { text-align:left; }
+    thead th { color:var(--muted); font-size:10px; letter-spacing:.13em; text-transform:uppercase; }
+    code { color:var(--cyan); }
+    .terminal-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .terminal { min-width:0; border:1px solid var(--line); background:#050708; box-shadow:0 22px 80px rgba(0,0,0,.28); }
+    .terminal header { display:flex; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--line); color:var(--muted); font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+    .terminal.normal header { border-left:4px solid var(--ember); }
+    .terminal.private header { border-left:4px solid var(--acid); }
+    pre { margin:0; min-height:270px; padding:22px; overflow:auto; white-space:pre-wrap; color:#c6ceca; font:12px/1.65 "Azeret Mono","IBM Plex Mono",monospace; }
+    .callout { display:grid; grid-template-columns:1fr 2fr; gap:32px; margin-top:28px; padding:24px; border:1px solid rgba(201,255,69,.45); background:rgba(201,255,69,.055); }
+    .callout strong { color:var(--acid); text-transform:uppercase; letter-spacing:.12em; font-size:11px; }
+    .callout p { margin:0; color:#c4cbc7; line-height:1.65; }
+    .check-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+    .check { display:flex; gap:13px; align-items:flex-start; border:1px solid var(--line); background:#0c1013; padding:17px; color:#c4cbc7; font-size:12px; line-height:1.55; }
+    .check:before { content:"✓"; color:var(--acid); font-weight:700; }
+    .hash { overflow-wrap:anywhere; color:var(--muted); font-size:11px; }
+    footer { border-top:1px solid var(--paper); padding-top:18px; display:flex; justify-content:space-between; gap:20px; color:var(--muted); font-size:10px; line-height:1.6; text-transform:uppercase; letter-spacing:.1em; }
+    @media (max-width:820px) { .hero,.section-head,.callout { grid-template-columns:1fr; } .cards { grid-template-columns:1fr 1fr; } .terminal-grid { grid-template-columns:1fr; } .hero-stat { border-left:0; border-top:1px solid var(--line); padding:28px 0 0; } }
+    @media (max-width:520px) { main { width:min(100% - 20px,1180px); } .cards,.check-grid { grid-template-columns:1fr; } th,td { padding:12px 6px; font-size:11px; } .mast { grid-template-columns:1fr; padding-bottom:48px; } }
+    @media (prefers-reduced-motion:no-preference) { .hero>* { animation:rise .7s ease both; } .hero-stat { animation-delay:.12s; } @keyframes rise { from { opacity:0; transform:translateY(18px); } } }
+  </style>
+</head>
+<body style="--size-width:63.49%">
+<main>
+  <div class="mast"><span>Anchor / SBF forensic build dossier</span><span>solana-cargo-build-sbf 3.1.10 · platform-tools v1.52 · rustc 1.89.0</span></div>
+  <section class="hero">
+    <div><div class="kicker">Private program mode · measured</div><h1>Less surface.<br><em>Same protocol.</em></h1><p class="dek">A normal and private build of the same Anchor program, inspected at the ELF boundary and executed through the same LiteSVM flow. Numeric errors, state transitions, IDLs, and explicit protocol logs stay stable; framework diagnostics and provenance disappear.</p></div>
+    <aside class="hero-stat"><strong>−36.51%</strong><span>primary ELF size</span><div class="rule"></div><span>151,992 B → 96,504 B</span></aside>
+  </section>
+
+  <section class="section"><div class="section-head"><span class="index">01 / PAYLOAD</span><h2>What changed on disk</h2></div>
+    <div class="cards">
+      <article class="card"><span class="label">ELF bytes</span><strong>96,504</strong><span class="delta">−55,488 B</span></article>
+      <article class="card"><span class="label">Printable bytes</span><strong>2,492</strong><span class="delta">−79.41%</span></article>
+      <article class="card"><span class="label">Source paths</span><strong>0</strong><span>from 11 normal</span></article>
+      <article class="card"><span class="label">Minimal fixture</span><strong>−75.15%</strong><span>57,848 → 14,376 B</span></article>
+    </div>
+    <table><thead><tr><th>Section</th><th>Normal bytes</th><th>Private bytes</th><th>Reduction</th></tr></thead><tbody><tr><th><code>.text</code></th><td>117,288</td><td>82,464</td><td class="gain">−29.69%</td></tr><tr><th><code>.rodata</code></th><td>14,372</td><td>5,248</td><td class="gain">−63.48%</td></tr><tr><th><code>.data.rel.ro</code></th><td>4,656</td><td>1,736</td><td class="gain">−62.71%</td></tr><tr><th><code>.rel.dyn</code></th><td>14,048</td><td>5,408</td><td class="gain">−61.50%</td></tr></tbody></table>
+  </section>
+
+  <section class="section"><div class="section-head"><span class="index">02 / ERROR</span><h2>The code stays. The explanation goes.</h2></div>
+    <div class="terminal-grid">
+      <article class="terminal normal"><header><span>Normal / Custom(6000)</span><span>2,700 CU</span></header><pre>Program log: Instruction: FailComparison
+Program log: AnchorError thrown in programs/private-program-fixture/src/lib.rs:32. Error Code: ValuesMustMatch. Error Number: 6000. Error Message: PRIVATE_FIXTURE_ERROR_MESSAGE.
+Program log: Left: 7
+Program log: Right: 9
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS failed: custom program error: 0x1770</pre></article>
+      <article class="terminal private"><header><span>Private / Custom(6000)</span><span>280 CU</span></header><pre>Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS failed: custom program error: 0x1770</pre></article>
+    </div>
+    <div class="callout"><strong>Not only the path</strong><p>Normal mode exposes the instruction name, file and line, error name, full message, and compared values. Private mode emits no Anchor diagnostic log at all. Solana still returns the stable numeric custom code <code>6000</code>.</p></div>
+  </section>
+
+  <section class="section"><div class="section-head"><span class="index">03 / CONTRACT</span><h2>What remains invariant</h2></div>
+    <div class="check-grid">
+      <div class="check">Successful state transition ends at <code>42</code> in both builds.</div>
+      <div class="check">Custom failures return <code>6000</code>; account constraints return <code>2000</code>.</div>
+      <div class="check">Explicit <code>msg!</code>, <code>sol_log_data</code>, and a semantic URL containing <code>/src/</code> remain.</div>
+      <div class="check">IDL bytes are identical: <span class="hash">sha256:4fce5d968ed30153ae2d2f3c462fef95fcfa3131f7267d360a2c1b530c3c2074</span></div>
+      <div class="check">Defined dynamic exports remain <code>SECURITY_TXT, custom_panic, entrypoint</code>.</div>
+      <div class="check">Security metadata contracts from <code>name, project_url, contacts, policy, source_code, source_release, source_revision, auditors, acknowledgements</code> to <code>source_release, source_revision</code>.</div>
+    </div>
+  </section>
+
+  <section class="section"><div class="section-head"><span class="index">04 / LIMIT</span><h2>Privacy, not obfuscation</h2></div>
+    <div class="callout"><strong>Honest boundary</strong><p>The panic handler is silent and locations are removed, but the user-authored panic literal remains in this ELF. It is not post-link scrubbed because arbitrary panic text cannot be safely distinguished from semantic protocol strings. Required loader exports and syscalls also remain.</p></div>
+  </section>
+
+  <footer><span>Generated by tests/private-program/test.sh</span><span>Mixed workspace · Debug · Custom out · LiteSVM · ELF audit</span></footer>
+</main>
+</body>
+</html>

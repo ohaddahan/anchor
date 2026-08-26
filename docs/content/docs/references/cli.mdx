@@ -96,6 +96,48 @@ Builds programs in the workspace targeting Solana's BPF runtime and emitting
 IDLs in the `target/idl` directory.
 
 ```shell
+anchor build --private
+anchor test --private
+```
+
+Private builds remove Anchor instruction logs, error names and messages,
+account-field diagnostics, comparison values, source locations, panic output,
+debug/static symbols, and non-minimal security metadata from the SBF artifact.
+The build fails if the post-link privacy audit finds any of those values.
+Numeric error codes, instruction and account layouts, explicit application
+logs/events, and semantic program strings are unchanged. This mode is not code
+obfuscation, and it does not enable `cargo build-sbf --optimize-size`.
+
+For errors, this is not only a file-path change. A normal Anchor failure logs
+the instruction name, file and line, error name, message, and compared values.
+A private failure emits none of that Anchor diagnostic log, while the Solana
+transaction result still exposes the same numeric custom error code.
+
+`cargo build-sbf --debug` is intentionally incompatible with private mode
+because private artifacts require zero debug information and stripped symbols.
+Use `--no-private` when producing a debug artifact. Other forwarded
+`cargo build-sbf` flags, including `--optimize-size` and `--sbf-out-dir`, remain
+authoritative.
+
+Use `--no-private` to override `[build] private = true` for one invocation. A
+program that enables `anchor-lang/private-program` directly in `Cargo.toml`
+remains private even with `--no-private`:
+
+```toml
+[dependencies]
+anchor-lang = { version = "1.1.2", features = ["private-program"] }
+```
+
+Use `anchor_lang::program_security_txt!` instead of calling
+`solana_security_txt::security_txt!` directly when private builds should retain
+only `source_release` and `source_revision`. Normal builds emit every supplied
+standard security-txt field.
+
+A generated normal/private comparison is available in
+`tests/private-program/reports/private-program-comparison.{md,html}`. Regenerate
+both reports with `tests/private-program/test.sh`.
+
+```shell
 anchor build --verifiable
 ```
 

@@ -156,6 +156,54 @@ pub use idl::IdlBuild;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 
+#[cfg(not(feature = "private-program"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_error {
+    ($error_code:expr) => {{
+        let error_code = $error_code;
+        $crate::error::Error::from($crate::error::AnchorError {
+            error_name: error_code.name(),
+            error_code_number: error_code.into(),
+            error_msg: error_code.to_string(),
+            error_origin: None,
+            compared_values: None,
+        })
+    }};
+    ($error_code:expr, source) => {{
+        let error_code = $error_code;
+        $crate::error::Error::from($crate::error::AnchorError {
+            error_name: error_code.name(),
+            error_code_number: error_code.into(),
+            error_msg: error_code.to_string(),
+            error_origin: Some($crate::error::ErrorOrigin::Source($crate::error::Source {
+                filename: file!(),
+                line: line!(),
+            })),
+            compared_values: None,
+        })
+    }};
+}
+
+#[cfg(feature = "private-program")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_error {
+    ($error_code:expr) => {{
+        let error_code_number: u32 = ($error_code).into();
+        $crate::error::Error::from($crate::error::AnchorError {
+            error_name: ::std::string::String::new(),
+            error_code_number,
+            error_msg: ::std::string::String::new(),
+            error_origin: None,
+            compared_values: None,
+        })
+    }};
+    ($error_code:expr, source) => {
+        $crate::__anchor_error!($error_code)
+    };
+}
+
 // Deprecated message for AccountInfo usage in Accounts struct
 #[deprecated(
     note = "Use `UncheckedAccount` instead of `AccountInfo` for safer unchecked accounts."
@@ -609,7 +657,7 @@ pub mod __private {
     pub use {
         crate::{bpf_writer::BpfWriter, common::is_closed},
         anchor_attribute_account::ZeroCopyAccessor,
-        base64, bytemuck,
+        base64, bytemuck, solana_security_txt,
     };
 
     // Used to calculate the maximum between two expressions.
@@ -771,13 +819,18 @@ macro_rules! require {
 macro_rules! require_eq {
     ($value1: expr, $value2: expr, $error_code:expr $(,)?) => {
         if $value1 != $value2 {
-            return Err(anchor_lang::error!($error_code).with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                anchor_lang::error!($error_code),
+                ($value1, $value2)
+            ));
         }
     };
     ($value1: expr, $value2: expr $(,)?) => {
         if $value1 != $value2 {
-            return Err(error!(anchor_lang::error::ErrorCode::RequireEqViolated)
-                .with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                error!(anchor_lang::error::ErrorCode::RequireEqViolated),
+                ($value1, $value2)
+            ));
         }
     };
 }
@@ -801,13 +854,18 @@ macro_rules! require_eq {
 macro_rules! require_neq {
     ($value1: expr, $value2: expr, $error_code: expr $(,)?) => {
         if $value1 == $value2 {
-            return Err(anchor_lang::error!($error_code).with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                anchor_lang::error!($error_code),
+                ($value1, $value2)
+            ));
         }
     };
     ($value1: expr, $value2: expr $(,)?) => {
         if $value1 == $value2 {
-            return Err(error!(anchor_lang::error::ErrorCode::RequireNeqViolated)
-                .with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                error!(anchor_lang::error::ErrorCode::RequireNeqViolated),
+                ($value1, $value2)
+            ));
         }
     };
 }
@@ -831,13 +889,18 @@ macro_rules! require_neq {
 macro_rules! require_keys_eq {
     ($value1: expr, $value2: expr, $error_code:expr $(,)?) => {
         if $value1 != $value2 {
-            return Err(anchor_lang::error!($error_code).with_pubkeys(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_pubkeys!(
+                anchor_lang::error!($error_code),
+                ($value1, $value2)
+            ));
         }
     };
     ($value1: expr, $value2: expr $(,)?) => {
         if $value1 != $value2 {
-            return Err(error!(anchor_lang::error::ErrorCode::RequireKeysEqViolated)
-                .with_pubkeys(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_pubkeys!(
+                error!(anchor_lang::error::ErrorCode::RequireKeysEqViolated),
+                ($value1, $value2)
+            ));
         }
     };
 }
@@ -861,15 +924,18 @@ macro_rules! require_keys_eq {
 macro_rules! require_keys_neq {
     ($value1: expr, $value2: expr, $error_code: expr $(,)?) => {
         if $value1 == $value2 {
-            return Err(anchor_lang::error!($error_code).with_pubkeys(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_pubkeys!(
+                anchor_lang::error!($error_code),
+                ($value1, $value2)
+            ));
         }
     };
     ($value1: expr, $value2: expr $(,)?) => {
         if $value1 == $value2 {
-            return Err(
-                error!(anchor_lang::error::ErrorCode::RequireKeysNeqViolated)
-                    .with_pubkeys(($value1, $value2)),
-            );
+            return Err(anchor_lang::error::__anchor_with_pubkeys!(
+                error!(anchor_lang::error::ErrorCode::RequireKeysNeqViolated),
+                ($value1, $value2)
+            ));
         }
     };
 }
@@ -893,13 +959,18 @@ macro_rules! require_keys_neq {
 macro_rules! require_gt {
     ($value1: expr, $value2: expr, $error_code: expr $(,)?) => {
         if $value1 <= $value2 {
-            return Err(anchor_lang::error!($error_code).with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                anchor_lang::error!($error_code),
+                ($value1, $value2)
+            ));
         }
     };
     ($value1: expr, $value2: expr $(,)?) => {
         if $value1 <= $value2 {
-            return Err(error!(anchor_lang::error::ErrorCode::RequireGtViolated)
-                .with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                error!(anchor_lang::error::ErrorCode::RequireGtViolated),
+                ($value1, $value2)
+            ));
         }
     };
 }
@@ -921,13 +992,18 @@ macro_rules! require_gt {
 macro_rules! require_gte {
     ($value1: expr, $value2: expr, $error_code: expr $(,)?) => {
         if $value1 < $value2 {
-            return Err(anchor_lang::error!($error_code).with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                anchor_lang::error!($error_code),
+                ($value1, $value2)
+            ));
         }
     };
     ($value1: expr, $value2: expr $(,)?) => {
         if $value1 < $value2 {
-            return Err(error!(anchor_lang::error::ErrorCode::RequireGteViolated)
-                .with_values(($value1, $value2)));
+            return Err(anchor_lang::error::__anchor_with_values!(
+                error!(anchor_lang::error::ErrorCode::RequireGteViolated),
+                ($value1, $value2)
+            ));
         }
     };
 }
@@ -969,5 +1045,124 @@ macro_rules! source {
             filename: file!(),
             line: line!(),
         }
+    };
+}
+
+/// Emit a standard Solana security.txt record. Private program builds retain
+/// only `source_release` and `source_revision` provenance fields.
+#[cfg(not(feature = "private-program"))]
+#[macro_export]
+macro_rules! program_security_txt {
+    ($($field:ident: $value:expr),* $(,)?) => {
+        $crate::__private::solana_security_txt::security_txt!($($field: $value),*);
+    };
+}
+
+#[cfg(feature = "private-program")]
+#[macro_export]
+macro_rules! program_security_txt {
+    ($($fields:tt)*) => {
+        $crate::__anchor_private_security_txt!(@collect [none] [none]; $($fields)*);
+    };
+}
+
+#[cfg(feature = "private-program")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_private_security_txt {
+    (@collect [$($release:tt)*] [$($revision:tt)*];) => {
+        $crate::__anchor_private_security_txt!(@emit [$($release)*] [$($revision)*]);
+    };
+    (@collect [$($release:tt)*] [$($revision:tt)*]; source_release: $value:expr) => {
+        $crate::__anchor_private_security_txt!(@emit [some $value] [$($revision)*]);
+    };
+    (@collect [$($release:tt)*] [$($revision:tt)*]; source_revision: $value:expr) => {
+        $crate::__anchor_private_security_txt!(@emit [$($release)*] [some $value]);
+    };
+    (@collect [$($release:tt)*] [$($revision:tt)*]; $name:ident: $value:expr) => {
+        $crate::__anchor_private_security_txt!(@emit [$($release)*] [$($revision)*]);
+    };
+    (@collect [$($release:tt)*] [$($revision:tt)*]; source_release: $value:expr, $($rest:tt)*) => {
+        $crate::__anchor_private_security_txt!(@collect [some $value] [$($revision)*]; $($rest)*);
+    };
+    (@collect [$($release:tt)*] [$($revision:tt)*]; source_revision: $value:expr, $($rest:tt)*) => {
+        $crate::__anchor_private_security_txt!(@collect [$($release)*] [some $value]; $($rest)*);
+    };
+    (@collect [$($release:tt)*] [$($revision:tt)*]; $name:ident: $value:expr, $($rest:tt)*) => {
+        $crate::__anchor_private_security_txt!(@collect [$($release)*] [$($revision)*]; $($rest)*);
+    };
+    (@emit [none] [none]) => {
+        $crate::__anchor_private_security_txt!(@static "");
+    };
+    (@emit [some $release:expr] [none]) => {
+        $crate::__anchor_private_security_txt!(@static "source_release\0", $release, "\0");
+    };
+    (@emit [none] [some $revision:expr]) => {
+        $crate::__anchor_private_security_txt!(@static "source_revision\0", $revision, "\0");
+    };
+    (@emit [some $release:expr] [some $revision:expr]) => {
+        $crate::__anchor_private_security_txt!(@static
+            "source_release\0", $release, "\0",
+            "source_revision\0", $revision, "\0"
+        );
+    };
+    (@static $($contents:expr),*) => {
+        #[cfg_attr(any(target_arch = "bpf", target_os = "solana"), link_section = ".security.txt")]
+        #[allow(dead_code)]
+        #[no_mangle]
+        pub static SECURITY_TXT: &str = concat!(
+            "=======BEGIN SECURITY.TXT V1=======\0",
+            $($contents,)*
+            "=======END SECURITY.TXT V1=======\0"
+        );
+    };
+}
+
+#[cfg(not(feature = "private-program"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_log_instruction {
+    ($name:expr) => {
+        $crate::prelude::msg!($name)
+    };
+}
+
+#[cfg(feature = "private-program")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_log_instruction {
+    ($name:expr) => {};
+}
+
+#[cfg(not(feature = "private-program"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_entrypoint {
+    ($process_instruction:ident) => {
+        $crate::solana_program::entrypoint!($process_instruction);
+    };
+}
+
+#[cfg(feature = "private-program")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __anchor_entrypoint {
+    ($process_instruction:ident) => {
+        /// # Safety
+        #[no_mangle]
+        pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
+            let (program_id, accounts, instruction_data) =
+                unsafe { $crate::solana_program::entrypoint::deserialize(input) };
+            match $process_instruction(program_id, &accounts, instruction_data) {
+                Ok(()) => $crate::solana_program::entrypoint::SUCCESS,
+                Err(error) => error.into(),
+            }
+        }
+
+        $crate::solana_program::entrypoint::custom_heap_default!();
+
+        #[cfg(all(not(feature = "custom-panic"), target_os = "solana"))]
+        #[no_mangle]
+        fn custom_panic(_: &core::panic::PanicInfo<'_>) {}
     };
 }

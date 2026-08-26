@@ -39,6 +39,20 @@ Example:
 skip_local_validator = true
 ```
 
+## build
+
+### private
+
+Enables private program mode for `anchor build` and the build phase of
+`anchor test`. Explicit `--private` and `--no-private` CLI flags take precedence
+over this setting, except that a program manifest which directly enables
+`anchor-lang/private-program` cannot be disabled from the CLI.
+
+```toml
+[build]
+private = true
+```
+
 ## features
 
 ### resolution

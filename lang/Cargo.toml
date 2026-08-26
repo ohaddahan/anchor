@@ -43,6 +43,7 @@ lazy-account = [
     "anchor-attribute-account/lazy-account",
     "anchor-derive-serde/lazy-account",
 ]
+private-program = ["anchor-lang-error/private-program"]
 
 [dependencies]
 anchor-attribute-access-control = { workspace = true }
@@ -88,6 +89,7 @@ solana-sysvar = { workspace = true, features = ["bincode"] }
 solana-sysvar-id.workspace = true
 
 thiserror = "1"
+solana-security-txt = "1.1.3"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

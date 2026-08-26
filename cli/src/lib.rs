@@ -68,9 +68,11 @@ mod flamegraph;
 mod keygen;
 mod legacy_idl;
 mod metadata;
+mod private_program;
 #[cfg(not(windows))]
 mod profile;
 mod program;
+pub mod rustc_wrapper;
 pub mod template;
 
 // Version of the docker image.
@@ -233,6 +235,12 @@ pub enum Command {
         /// True if the build artifact needs to be deterministic and verifiable.
         #[clap(short, long)]
         verifiable: bool,
+        /// Remove non-semantic diagnostics and provenance from the program artifact.
+        #[clap(long, conflicts_with = "no_private")]
+        private: bool,
+        /// Disable `[build] private = true` for this invocation.
+        #[clap(long, conflicts_with = "private")]
+        no_private: bool,
         /// Name of the program to build
         #[clap(short, long)]
         program_name: Option<String>,
@@ -321,6 +329,12 @@ pub enum Command {
         /// Do not build the IDL
         #[clap(long)]
         no_idl: bool,
+        /// Remove non-semantic diagnostics and provenance from built program artifacts.
+        #[clap(long, conflicts_with = "no_private")]
+        private: bool,
+        /// Disable `[build] private = true` for this invocation.
+        #[clap(long, conflicts_with = "private")]
+        no_private: bool,
         /// Flag to keep the local validator running after tests
         /// to be able to check the transactions.
         #[clap(long)]
@@ -1404,6 +1418,8 @@ fn process_command(opts: Opts) -> Result<()> {
             idl,
             idl_ts,
             verifiable,
+            private,
+            no_private,
             program_name,
             solana_version,
             docker_image,
@@ -1419,6 +1435,7 @@ fn process_command(opts: Opts) -> Result<()> {
             idl,
             idl_ts,
             verifiable,
+            private_override(private, no_private),
             skip_lint,
             ignore_keys,
             program_name,
@@ -1501,6 +1518,8 @@ fn process_command(opts: Opts) -> Result<()> {
             skip_local_validator,
             skip_build,
             no_idl,
+            private,
+            no_private,
             detach,
             run,
             script,
@@ -1518,6 +1537,7 @@ fn process_command(opts: Opts) -> Result<()> {
             skip_build,
             skip_lint,
             no_idl,
+            private_override(private, no_private),
             detach,
             run,
             script,
@@ -1614,6 +1634,16 @@ fn process_command(opts: Opts) -> Result<()> {
         Command::Program { subcmd } => program::program(&opts.cfg_override, subcmd),
         Command::Codama { subcmd } => codama::entry(subcmd),
     }
+}
+
+fn private_override(private: bool, no_private: bool) -> Option<bool> {
+    private
+        .then_some(true)
+        .or_else(|| no_private.then_some(false))
+}
+
+fn resolve_private_setting(cli_override: Option<bool>, workspace_private: bool) -> bool {
+    cli_override.unwrap_or(workspace_private)
 }
 
 /// Cargo does not support nested workspaces. If `start` lives inside a
@@ -2169,6 +2199,7 @@ pub fn build(
     idl: Option<String>,
     idl_ts: Option<String>,
     verifiable: bool,
+    private: Option<bool>,
     skip_lint: bool,
     ignore_keys: bool,
     program_name: Option<String>,
@@ -2241,6 +2272,7 @@ pub fn build(
     let cargo = Manifest::discover()?;
     let build_config = BuildConfig {
         verifiable,
+        private: resolve_private_setting(private, cfg.build.private),
         solana_version: solana_version.or_else(|| cfg.toolchain.solana_version.clone()),
         docker_image: docker_image.unwrap_or_else(|| cfg.docker()),
         bootstrap,
@@ -2508,18 +2540,42 @@ fn build_cwd(
     skip_lint: bool,
     no_docs: bool,
 ) -> Result<Vec<PathBuf>> {
+    let manifest = Manifest::from_path(&cargo_toml)?;
+    let binary_name = manifest.lib_name()?;
+    let private = build_config.private
+        || cargo_args_request_private(&cargo_args)
+        || manifest_enables_private_program(&cargo_toml)?;
+    if private && cargo_args_have_flag(&cargo_args, "--debug") {
+        bail!(
+            "`cargo build-sbf --debug` is incompatible with private program mode because private \
+             artifacts require zero debug information and stripped symbols; use `--no-private` \
+             for a debug build"
+        );
+    }
+    let cargo_args = with_private_program_feature(cargo_args, private);
+    let mut build_config = build_config.clone();
+    build_config.private = private;
+
     match cargo_toml.parent() {
         None => return Err(anyhow!("Unable to find parent")),
         Some(p) => std::env::set_current_dir(p)?,
     };
     match build_config.verifiable {
         false => _build_cwd(
-            cfg, no_idl, idl_out, idl_ts_out, skip_lint, no_docs, cargo_args,
+            cfg,
+            no_idl,
+            idl_out,
+            idl_ts_out,
+            skip_lint,
+            no_docs,
+            cargo_args,
+            private,
+            &binary_name,
         ),
         true => build_cwd_verifiable(
             cfg,
             cargo_toml,
-            build_config,
+            &build_config,
             stdout,
             stderr,
             skip_lint,
@@ -2544,6 +2600,7 @@ fn build_cwd_verifiable(
     cargo_args: Vec<String>,
     no_docs: bool,
 ) -> Result<Vec<PathBuf>> {
+    let binary_name = Manifest::from_path(&cargo_toml)?.lib_name()?;
     // Create output dirs.
     let workspace_dir = cfg.path().parent().unwrap().canonicalize()?;
     let target_dir = target_dir()?;
@@ -2577,6 +2634,18 @@ fn build_cwd_verifiable(
             Err(e)
         }
         Ok(_) => {
+            if build_config.private {
+                let artifact = target_dir
+                    .join("verifiable")
+                    .join(&binary_name)
+                    .with_extension("so");
+                private_program::finalize_artifact(
+                    &artifact,
+                    &binary_name,
+                    Some(Path::new("/workdir")),
+                )?;
+            }
+
             // Build the idl.
             println!("Extracting the IDL");
             let idl = generate_idl(cfg, skip_lint, no_docs, &cargo_args)?;
@@ -2689,6 +2758,7 @@ fn docker_build(
             stderr,
             env_vars,
             cargo_args,
+            build_config.private,
         )
     });
 
@@ -2753,6 +2823,7 @@ fn docker_build_bpf(
     stderr: Option<File>,
     env_vars: Vec<String>,
     cargo_args: Vec<String>,
+    private: bool,
 ) -> Result<()> {
     let manifest_path =
         pathdiff::diff_paths(cargo_toml.canonicalize()?, cfg_parent.canonicalize()?)
@@ -2764,13 +2835,17 @@ fn docker_build_bpf(
     );
 
     // Execute the build.
-    let exit = std::process::Command::new("docker")
-        .args([
-            "exec",
-            "--env",
-            "PATH=/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/\
+    let mut command = std::process::Command::new("docker");
+    command.args([
+        "exec",
+        "--env",
+        "PATH=/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/\
              local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        ])
+    ]);
+    if private {
+        command.args(PRIVATE_DOCKER_WRAPPER_ARGS);
+    }
+    let exit = command
         .args(
             env_vars
                 .iter()
@@ -2872,16 +2947,41 @@ fn _build_cwd(
     skip_lint: bool,
     no_docs: bool,
     cargo_args: Vec<String>,
+    private: bool,
+    binary_name: &str,
 ) -> Result<Vec<PathBuf>> {
-    let exit = std::process::Command::new("cargo")
-        .args(BUILD_SUBCOMMAND)
-        .args(cargo_args.clone())
+    let deploy_dir = cargo_arg_value(&cargo_args, "--sbf-out-dir")
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                std::env::current_dir().unwrap_or_default().join(path)
+            }
+        })
+        .unwrap_or(target_dir()?.join("deploy"));
+    let mut command = std::process::Command::new("cargo");
+    command.args(BUILD_SUBCOMMAND);
+    if cargo_arg_value(&cargo_args, "--sbf-out-dir").is_none() {
+        command.args(["--sbf-out-dir", &deploy_dir.display().to_string()]);
+    }
+    if private {
+        configure_private_rustc_wrapper(&mut command)?;
+    }
+    command.args(cargo_args.clone());
+    let exit = command
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .map_err(|e| anyhow::format_err!("{}", e))?;
     if !exit.status.success() {
         std::process::exit(exit.status.code().unwrap_or(1));
+    }
+
+    let artifact = copy_sbf_artifact(binary_name, private, &cargo_args, &deploy_dir)?;
+
+    if private {
+        private_program::finalize_artifact(&artifact, binary_name, cfg.path().parent())?;
     }
 
     // Generate IDL
@@ -2936,8 +3036,162 @@ fn _build_cwd(
     }
 }
 
+fn copy_sbf_artifact(
+    binary_name: &str,
+    private: bool,
+    cargo_args: &[String],
+    deploy_dir: &Path,
+) -> Result<PathBuf> {
+    // cargo-build-sbf does not refresh --sbf-out-dir on every cache hit. Copy
+    // and strip the resolved release artifact explicitly so switching between
+    // normal and isolated private targets cannot leave the prior mode's ELF in
+    // target/deploy.
+    let target_dir = target_dir()?;
+    let build_target_dir = if private {
+        target_dir.join("private-program-build")
+    } else {
+        target_dir.to_path_buf()
+    };
+    let source = ["sbpf-solana-solana", "sbf-solana-solana"]
+        .into_iter()
+        .map(|target| {
+            build_target_dir
+                .join(target)
+                .join("release")
+                .join(binary_name)
+                .with_extension("so")
+        })
+        .find(|path| path.exists())
+        .ok_or_else(|| anyhow!("unable to locate freshly built SBF artifact for {binary_name}"))?;
+    let destination = deploy_dir.join(binary_name).with_extension("so");
+    fs::create_dir_all(destination.parent().expect("deploy artifact has a parent"))?;
+    if !private && cargo_args_have_flag(cargo_args, "--debug") {
+        fs::copy(&source, &destination).with_context(|| {
+            format!(
+                "copy debug SBF artifact from {} to {}",
+                source.display(),
+                destination.display()
+            )
+        })?;
+        return Ok(destination);
+    }
+
+    let cargo_build_sbf = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|path| {
+            path.join(if cfg!(windows) {
+                "cargo-build-sbf.exe"
+            } else {
+                "cargo-build-sbf"
+            })
+        })
+        .find(|path| path.is_file())
+        .ok_or_else(|| anyhow!("unable to locate cargo-build-sbf on PATH"))?;
+    let sbf_sdk = std::env::var_os("SBF_SDK_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            cargo_build_sbf
+                .parent()
+                .expect("cargo-build-sbf has a parent")
+                .join("platform-tools-sdk/sbf")
+        });
+    let strip_script = sbf_sdk.join("scripts/strip.sh");
+    let status = std::process::Command::new("bash")
+        .arg(&strip_script)
+        .arg(&source)
+        .arg(&destination)
+        .status()
+        .with_context(|| format!("run {}", strip_script.display()))?;
+    if !status.success() {
+        bail!(
+            "failed to strip SBF artifact {} with status {status}",
+            source.display()
+        );
+    }
+    Ok(destination)
+}
+
 /// Subcommand and any arguments to be passed to cargo
 const BUILD_SUBCOMMAND: &[&str] = &["build-sbf", "--tools-version", "v1.52"];
+const PRIVATE_DOCKER_WRAPPER_ARGS: &[&str] = &[
+    "--env",
+    "RUSTC_WRAPPER=anchor",
+    "--env",
+    "__ANCHOR_RUSTC_WRAPPER=private",
+];
+
+fn cargo_args_request_private(cargo_args: &[String]) -> bool {
+    cargo_args.iter().any(|arg| {
+        arg.split([',', ' '])
+            .any(|feature| feature.trim() == "anchor-lang/private-program")
+    })
+}
+
+fn cargo_args_have_flag(cargo_args: &[String], flag: &str) -> bool {
+    cargo_args.iter().any(|argument| {
+        argument == flag
+            || argument
+                .strip_prefix(flag)
+                .is_some_and(|suffix| suffix.starts_with('='))
+    })
+}
+
+fn cargo_arg_value<'a>(cargo_args: &'a [String], flag: &str) -> Option<&'a str> {
+    cargo_args.iter().enumerate().find_map(|(index, argument)| {
+        if argument == flag {
+            cargo_args.get(index + 1).map(String::as_str)
+        } else {
+            argument.strip_prefix(flag)?.strip_prefix('=')
+        }
+    })
+}
+
+fn with_private_program_feature(mut cargo_args: Vec<String>, private: bool) -> Vec<String> {
+    if private && !cargo_args_request_private(&cargo_args) {
+        cargo_args.push("--features".to_owned());
+        cargo_args.push("anchor-lang/private-program".to_owned());
+    }
+    cargo_args
+}
+
+fn manifest_enables_private_program(manifest_path: &Path) -> Result<bool> {
+    let manifest_path = manifest_path
+        .canonicalize()
+        .with_context(|| format!("canonicalize {}", manifest_path.display()))?;
+    let mut command = MetadataCommand::new();
+    command.manifest_path(&manifest_path);
+    let metadata = command
+        .exec()
+        .with_context(|| format!("resolve Cargo features for {}", manifest_path.display()))?;
+    let package = metadata
+        .packages
+        .iter()
+        .find(|package| package.manifest_path.as_std_path() == manifest_path)
+        .ok_or_else(|| anyhow!("Cargo metadata did not include {}", manifest_path.display()))?;
+
+    Ok(package.dependencies.iter().any(|dependency| {
+        dependency.name == "anchor-lang"
+            && dependency
+                .features
+                .iter()
+                .any(|feature| feature.as_str() == "private-program")
+    }))
+}
+
+fn configure_private_rustc_wrapper(command: &mut std::process::Command) -> Result<()> {
+    let anchor_exe = std::env::current_exe().context("resolve anchor binary for RUSTC_WRAPPER")?;
+    let target_dir = target_dir()?;
+    let private_target_dir = target_dir.join("private-program-build");
+    if let Some(existing) = std::env::var_os("RUSTC_WRAPPER") {
+        if Path::new(&existing) != anchor_exe {
+            command.env(rustc_wrapper::CHAIN_WRAPPER, existing);
+        }
+    }
+    command
+        .env("CARGO_TARGET_DIR", private_target_dir)
+        .env("RUSTC_WRAPPER", anchor_exe)
+        .env(rustc_wrapper::WRAPPER_SENTINEL, rustc_wrapper::PRIVATE_MODE);
+    Ok(())
+}
 
 /// Run the configured SBF build command.
 pub fn cargo_build_sbf(cwd: Option<&Path>, extra_args: &[String]) -> Result<()> {
@@ -3948,6 +4202,7 @@ fn test(
     skip_build: bool,
     skip_lint: bool,
     no_idl: bool,
+    private: Option<bool>,
     detach: bool,
     tests_to_run: Vec<String>,
     script_name: Option<String>,
@@ -4037,6 +4292,7 @@ fn test(
                 None,
                 None,
                 false,
+                private,
                 skip_lint,
                 true,
                 program_name.clone(),
@@ -4247,6 +4503,7 @@ fn debugger_anchor_workspace(
             skip_build,
             skip_lint,
             true,
+            None,
             false,
             Vec::new(),
             None, // script_name — debugger drives test execution itself
@@ -4314,7 +4571,10 @@ fn debugger_loose(
         let anchor_exe =
             std::env::current_exe().context("resolve anchor binary path for RUSTC_WRAPPER")?;
         std::env::set_var("RUSTC_WRAPPER", &anchor_exe);
-        std::env::set_var(debugger::rustc_wrapper::WRAPPER_SENTINEL, "1");
+        std::env::set_var(
+            rustc_wrapper::WRAPPER_SENTINEL,
+            rustc_wrapper::DEBUGGER_MODE,
+        );
 
         if !skip_build {
             let build_cwd = ws.cargo_invocation_dir();
@@ -4323,7 +4583,7 @@ fn debugger_loose(
         }
 
         std::env::remove_var("RUSTC_WRAPPER");
-        std::env::remove_var(debugger::rustc_wrapper::WRAPPER_SENTINEL);
+        std::env::remove_var(rustc_wrapper::WRAPPER_SENTINEL);
 
         eprintln!(
             "running `cargo test{gdb} --features {profile_feature}{pkg}{filter}` from {dir}",
@@ -4408,7 +4668,10 @@ fn run_coverage(
         let anchor_exe =
             std::env::current_exe().context("resolve anchor binary path for RUSTC_WRAPPER")?;
         std::env::set_var("RUSTC_WRAPPER", &anchor_exe);
-        std::env::set_var(debugger::rustc_wrapper::WRAPPER_SENTINEL, "1");
+        std::env::set_var(
+            rustc_wrapper::WRAPPER_SENTINEL,
+            rustc_wrapper::DEBUGGER_MODE,
+        );
 
         if !skip_build {
             let build_cwd = ws.cargo_invocation_dir();
@@ -6634,6 +6897,7 @@ fn localnet(
                 None,
                 None,
                 false,
+                None,
                 skip_lint,
                 ignore_keys,
                 None,
@@ -7227,6 +7491,114 @@ mod tests {
             panic!("expected localnet command");
         };
         assert_eq!(validator, ValidatorType::Surfpool);
+    }
+
+    #[test]
+    fn private_build_flags_parse_and_conflict() {
+        let opts = Opts::try_parse_from(["anchor", "build", "--private"]).unwrap();
+        let Command::Build {
+            private,
+            no_private,
+            ..
+        } = opts.command
+        else {
+            panic!("expected build command");
+        };
+        assert_eq!(private_override(private, no_private), Some(true));
+
+        let opts = Opts::try_parse_from(["anchor", "test", "--no-private"]).unwrap();
+        let Command::Test {
+            private,
+            no_private,
+            ..
+        } = opts.command
+        else {
+            panic!("expected test command");
+        };
+        assert_eq!(private_override(private, no_private), Some(false));
+
+        assert!(Opts::try_parse_from(["anchor", "build", "--private", "--no-private"]).is_err());
+    }
+
+    #[test]
+    fn private_feature_is_merged_with_cargo_arguments() {
+        let cargo_args = vec![
+            "--features".to_owned(),
+            "custom-one,custom-two".to_owned(),
+            "--no-default-features".to_owned(),
+        ];
+        let merged = with_private_program_feature(cargo_args.clone(), true);
+        assert!(merged.starts_with(&cargo_args));
+        assert_eq!(
+            &merged[cargo_args.len()..],
+            &["--features", "anchor-lang/private-program"]
+        );
+
+        let unchanged = with_private_program_feature(merged.clone(), true);
+        assert_eq!(unchanged, merged);
+        assert_eq!(
+            with_private_program_feature(cargo_args.clone(), false),
+            cargo_args
+        );
+    }
+
+    #[test]
+    fn cargo_build_sbf_flags_and_values_are_preserved() {
+        let cargo_args = vec![
+            "--debug".to_owned(),
+            "--sbf-out-dir=custom/deploy".to_owned(),
+            "--features".to_owned(),
+            "custom".to_owned(),
+        ];
+        assert!(cargo_args_have_flag(&cargo_args, "--debug"));
+        assert_eq!(
+            cargo_arg_value(&cargo_args, "--sbf-out-dir"),
+            Some("custom/deploy")
+        );
+        assert_eq!(cargo_arg_value(&cargo_args, "--features"), Some("custom"));
+        assert!(!cargo_args_have_flag(&cargo_args, "--optimize-size"));
+    }
+
+    #[test]
+    fn private_cli_selection_overrides_workspace_config() {
+        assert!(resolve_private_setting(None, true));
+        assert!(!resolve_private_setting(None, false));
+        assert!(resolve_private_setting(Some(true), false));
+        assert!(!resolve_private_setting(Some(false), true));
+    }
+
+    #[test]
+    fn verifiable_private_build_configures_the_wrapper() {
+        assert_eq!(
+            PRIVATE_DOCKER_WRAPPER_ARGS,
+            [
+                "--env",
+                "RUSTC_WRAPPER=anchor",
+                "--env",
+                "__ANCHOR_RUSTC_WRAPPER=private"
+            ]
+        );
+    }
+
+    #[test]
+    fn manifest_private_feature_is_detected() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src/lib.rs"), "pub fn fixture() {}\n").unwrap();
+        let lang_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("lang");
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"private-manifest-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanchor-lang = {{ path = {:?}, features = [\"private-program\"] }}\n",
+                lang_path
+            ),
+        )
+        .unwrap();
+
+        assert!(manifest_enables_private_program(&dir.path().join("Cargo.toml")).unwrap());
     }
 
     #[test]

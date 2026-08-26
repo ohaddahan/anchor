@@ -22,6 +22,13 @@ To produce a verifiable build, run
 anchor build --verifiable
 ```
 
+Private mode can be combined with verifiable builds. The same compiler wrapper,
+post-link source-path scrub, and ELF audit run inside/after the container build:
+
+```shell
+anchor build --verifiable --private
+```
+
 ## Verifying
 
 To verify a build against a program deployed on mainnet, run
