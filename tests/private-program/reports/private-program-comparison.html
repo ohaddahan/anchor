@@ -75,7 +75,20 @@
     <table><thead><tr><th>Section</th><th>Normal bytes</th><th>Private bytes</th><th>Reduction</th></tr></thead><tbody><tr><th><code>.text</code></th><td>117,288</td><td>82,464</td><td class="gain">−29.69%</td></tr><tr><th><code>.rodata</code></th><td>14,372</td><td>5,248</td><td class="gain">−63.48%</td></tr><tr><th><code>.data.rel.ro</code></th><td>4,656</td><td>1,736</td><td class="gain">−62.71%</td></tr><tr><th><code>.rel.dyn</code></th><td>14,048</td><td>5,408</td><td class="gain">−61.50%</td></tr></tbody></table>
   </section>
 
-  <section class="section"><div class="section-head"><span class="index">02 / ERROR</span><h2>The code stays. The explanation goes.</h2></div>
+  <section class="section"><div class="section-head"><span class="index">02 / SUCCESS</span><h2>Same result. Less narration.</h2></div>
+    <div class="terminal-grid">
+      <article class="terminal normal"><header><span>Normal / SetValue</span><span>1,817 CU</span></header><pre>Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS invoke [1]
+Program log: Instruction: SetValue
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS consumed 1817 of 200000 compute units
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS success</pre></article>
+      <article class="terminal private"><header><span>Private / SetValue</span><span>1,674 CU</span></header><pre>Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS invoke [1]
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS consumed 1674 of 200000 compute units
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS success</pre></article>
+    </div>
+    <div class="callout"><strong>Generated log removed</strong><p>Both executions write <code>42</code> and succeed. Private mode removes <code>Program log: Instruction: SetValue</code>; Solana's loader-level <code>invoke</code>, <code>consumed</code>, and <code>success</code> lines remain. This fixture uses <strong>7.87% less CU</strong> on the successful path.</p></div>
+  </section>
+
+  <section class="section"><div class="section-head"><span class="index">03 / ERROR</span><h2>The code stays. The explanation goes.</h2></div>
     <div class="terminal-grid">
       <article class="terminal normal"><header><span>Normal / Custom(6000)</span><span>2,700 CU</span></header><pre>Program log: Instruction: FailComparison
 Program log: AnchorError thrown in programs/private-program-fixture/src/lib.rs:32. Error Code: ValuesMustMatch. Error Number: 6000. Error Message: PRIVATE_FIXTURE_ERROR_MESSAGE.
@@ -87,7 +100,7 @@ Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS failed: custom program erro
     <div class="callout"><strong>Not only the path</strong><p>Normal mode exposes the instruction name, file and line, error name, full message, and compared values. Private mode emits no Anchor diagnostic log at all. Solana still returns the stable numeric custom code <code>6000</code>.</p></div>
   </section>
 
-  <section class="section"><div class="section-head"><span class="index">03 / CONTRACT</span><h2>What remains invariant</h2></div>
+  <section class="section"><div class="section-head"><span class="index">04 / CONTRACT</span><h2>What remains invariant</h2></div>
     <div class="check-grid">
       <div class="check">Successful state transition ends at <code>42</code> in both builds.</div>
       <div class="check">Custom failures return <code>6000</code>; account constraints return <code>2000</code>.</div>
@@ -98,7 +111,7 @@ Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS failed: custom program erro
     </div>
   </section>
 
-  <section class="section"><div class="section-head"><span class="index">04 / LIMIT</span><h2>Privacy, not obfuscation</h2></div>
+  <section class="section"><div class="section-head"><span class="index">05 / LIMIT</span><h2>Privacy, not obfuscation</h2></div>
     <div class="callout"><strong>Honest boundary</strong><p>The panic handler is silent and locations are removed, but the user-authored panic literal remains in this ELF. It is not post-link scrubbed because arbitrary panic text cannot be safely distinguished from semantic protocol strings. Required loader exports and syscalls also remain.</p></div>
   </section>
 

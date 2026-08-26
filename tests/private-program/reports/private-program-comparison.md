@@ -34,6 +34,29 @@ Private errors do more than remove the file path. Normal mode logs the instructi
 | `.data.rel.ro` | 4,656 B | 1,736 B | 62.71% |
 | `.rel.dyn` | 14,048 B | 5,408 B | 61.50% |
 
+## Successful instruction comparison
+
+Both executions write the same value (`42`) and succeed. The normal build adds an Anchor-generated instruction-name log; private mode removes it while retaining Solana's loader-level `invoke`, `consumed`, and `success` lines.
+
+### Normal
+
+```text
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS invoke [1]
+Program log: Instruction: SetValue
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS consumed 1817 of 200000 compute units
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS success
+```
+
+### Private
+
+```text
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS invoke [1]
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS consumed 1674 of 200000 compute units
+Program Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS success
+```
+
+The successful `set_value` instruction consumed **1,817 CU normally** and **1,674 CU privately** (7.87% less for this fixture).
+
 ## Runtime error comparison
 
 Both executions return `InstructionError(0, Custom(6000))` / `InstructionError(0, Custom(6000))`.

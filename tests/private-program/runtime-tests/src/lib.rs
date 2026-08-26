@@ -265,13 +265,31 @@ mod tests {
 
     #[test]
     fn normal_and_private_artifacts_have_identical_runtime_results() {
-        let normal = std::env::var("ANCHOR_PRIVATE_NORMAL_SO").unwrap();
-        let private = std::env::var("ANCHOR_PRIVATE_PRIVATE_SO").unwrap();
-        let normal = exercise_artifact(Path::new(&normal));
-        let private = exercise_artifact(Path::new(&private));
+        let artifacts = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("target/private-program-artifacts");
+        let normal = std::env::var_os("ANCHOR_PRIVATE_NORMAL_SO")
+            .map(Into::into)
+            .unwrap_or_else(|| artifacts.join("normal.so"));
+        let private = std::env::var_os("ANCHOR_PRIVATE_PRIVATE_SO")
+            .map(Into::into)
+            .unwrap_or_else(|| artifacts.join("private.so"));
+        let normal = exercise_artifact(&normal);
+        let private = exercise_artifact(&private);
 
         assert_eq!(normal.value, 42);
         assert_eq!(private.value, normal.value);
+        assert!(normal
+            .set_value
+            .logs
+            .iter()
+            .any(|log| log.contains("Instruction: SetValue")));
+        assert!(!private
+            .set_value
+            .logs
+            .iter()
+            .any(|log| log.contains("Instruction:")));
         assert_numeric_error_matches(&normal.comparison, &private.comparison, 6000);
 
         for expected in [
