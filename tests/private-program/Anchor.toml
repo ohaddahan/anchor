@@ -1,0 +1,11 @@
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[build]
+private = true
+
+[programs.localnet]
+private_program_fixture = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+private_program_manifest = "Lamports11111111111111111111111111111111111"
+private_program_secondary = "Mu1tip1eErrors11111111111111111111111111111"

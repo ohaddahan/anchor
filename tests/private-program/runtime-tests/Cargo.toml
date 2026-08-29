@@ -1,0 +1,19 @@
+[package]
+name = "private-program-runtime-tests"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "private-program-report"
+path = "src/bin/report.rs"
+
+[dependencies]
+anchor-lang = { path = "../../../lang" }
+litesvm = "0.10.0"
+object = { version = "0.37.3", features = ["read_core", "elf"] }
+private-program-fixture = { path = "../programs/private-program-fixture", features = ["no-entrypoint"] }
+sha2 = "0.10"
+solana-keypair = "3.0.1"
+solana-message = "3.0.1"
+solana-signer = "3.0.0"
+solana-transaction = "3.0.2"
