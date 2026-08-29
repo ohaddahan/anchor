@@ -8,7 +8,7 @@ pub fn generate(program: &Program) -> proc_macro2::TokenStream {
     let name: proc_macro2::TokenStream = program.name.to_string().to_camel_case().parse().unwrap();
     quote! {
         #[cfg(not(feature = "no-entrypoint"))]
-        anchor_lang::solana_program::entrypoint!(entry);
+        anchor_lang::__anchor_entrypoint!(entry);
         /// The Anchor codegen exposes a programming model where a user defines
         /// a set of methods inside of a `#[program]` module in a way similar
         /// to writing RPC request handlers. The macro then generates a bunch of
