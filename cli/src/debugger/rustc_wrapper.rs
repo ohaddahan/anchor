@@ -1,4 +1,4 @@
-//! RUSTC_WRAPPER shim for Anchor's debugger and private SBF builds.
+//! Shared RUSTC_WRAPPER shim for Anchor's debugger and private SBF builds.
 //!
 //! ## Problem
 //!

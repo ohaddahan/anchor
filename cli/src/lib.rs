@@ -72,6 +72,7 @@ mod private_program;
 #[cfg(not(windows))]
 mod profile;
 mod program;
+#[path = "debugger/rustc_wrapper.rs"]
 pub mod rustc_wrapper;
 pub mod template;
 
@@ -2839,8 +2840,8 @@ fn docker_build_bpf(
     command.args([
         "exec",
         "--env",
-        "PATH=/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/\
-             local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "PATH=/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/local/\
+         sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     ]);
     if private {
         command.args(PRIVATE_DOCKER_WRAPPER_ARGS);
@@ -3086,21 +3087,13 @@ fn copy_sbf_artifact(
         })
         .find(|path| path.is_file())
         .ok_or_else(|| anyhow!("unable to locate cargo-build-sbf on PATH"))?;
-    let sbf_sdk = std::env::var_os("SBF_SDK_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            cargo_build_sbf
-                .parent()
-                .expect("cargo-build-sbf has a parent")
-                .join("platform-tools-sdk/sbf")
-        });
-    let strip_script = sbf_sdk.join("scripts/strip.sh");
-    let status = std::process::Command::new("bash")
-        .arg(&strip_script)
+    let llvm_objcopy = find_llvm_objcopy(&cargo_build_sbf)?;
+    let status = std::process::Command::new(&llvm_objcopy)
+        .arg("--strip-all")
         .arg(&source)
         .arg(&destination)
         .status()
-        .with_context(|| format!("run {}", strip_script.display()))?;
+        .with_context(|| format!("run {}", llvm_objcopy.display()))?;
     if !status.success() {
         bail!(
             "failed to strip SBF artifact {} with status {status}",
@@ -3108,6 +3101,38 @@ fn copy_sbf_artifact(
         );
     }
     Ok(destination)
+}
+
+fn find_llvm_objcopy(cargo_build_sbf: &Path) -> Result<PathBuf> {
+    let binary_name = if cfg!(windows) {
+        "llvm-objcopy.exe"
+    } else {
+        "llvm-objcopy"
+    };
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut candidates = std::env::var_os("LLVM_OBJCOPY")
+        .map(PathBuf::from)
+        .into_iter()
+        .chain(std::env::split_paths(&path).map(|path| path.join(binary_name)))
+        .chain(std::env::var_os("SBF_SDK_PATH").map(|path| {
+            PathBuf::from(path)
+                .join("dependencies/platform-tools/llvm/bin")
+                .join(binary_name)
+        }))
+        .chain(cargo_build_sbf.parent().map(|path| {
+            path.join("platform-tools-sdk/sbf/dependencies/platform-tools/llvm/bin")
+                .join(binary_name)
+        }))
+        .chain(dirs::home_dir().map(|path| {
+            path.join(".cache/solana/v1.52/platform-tools/llvm/bin")
+                .join(binary_name)
+        }));
+
+    candidates.find(|path| path.is_file()).ok_or_else(|| {
+        anyhow!(
+            "unable to locate {binary_name}; set LLVM_OBJCOPY to the platform-tools binary path"
+        )
+    })
 }
 
 /// Subcommand and any arguments to be passed to cargo
@@ -7592,7 +7617,9 @@ mod tests {
         fs::write(
             dir.path().join("Cargo.toml"),
             format!(
-                "[package]\nname = \"private-manifest-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanchor-lang = {{ path = {:?}, features = [\"private-program\"] }}\n",
+                "[package]\nname = \"private-manifest-test\"\nversion = \"0.1.0\"\nedition = \
+                 \"2021\"\n\n[dependencies]\nanchor-lang = {{ path = {:?}, features = \
+                 [\"private-program\"] }}\n",
                 lang_path
             ),
         )
