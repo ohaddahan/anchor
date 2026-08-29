@@ -27,7 +27,7 @@ pub mod highlight;
 pub mod loose;
 pub mod model;
 pub mod path_label;
-pub mod rustc_wrapper;
+pub use crate::rustc_wrapper;
 pub mod source;
 pub mod tui;
 

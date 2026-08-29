@@ -116,9 +116,17 @@ logs, panic text, and nonessential security metadata. Numeric error codes,
 IDLs, account and instruction layouts, explicit application logs, and events
 are unchanged.
 
+Private builds also ask rustc to omit source locations, debug information, and
+ordinary symbols. Existing Cargo features, flags, and compiler wrappers are
+preserved.
+
 Use `--no-private` to override `[build] private = true`. A program that enables
 the `anchor-lang/private-program` Cargo feature remains private because manifest
 features cannot be disabled by the CLI.
+
+Private mode is incompatible with `cargo build-sbf --debug`. Size optimization
+remains separate and can still be selected explicitly with
+`anchor build --private -- --optimize-size`.
 
 <Callout title="Tip">
 It's possible to pass arguments to the underlying `cargo build-sbf` command with `-- <ARGS>`. For example:
