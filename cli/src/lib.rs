@@ -233,6 +233,12 @@ pub enum Command {
         /// True if the build artifact needs to be deterministic and verifiable.
         #[clap(short, long)]
         verifiable: bool,
+        /// Remove non-semantic diagnostics and provenance from the program artifact.
+        #[clap(long, conflicts_with = "no_private")]
+        private: bool,
+        /// Disable `[build] private = true` for this invocation.
+        #[clap(long, conflicts_with = "private")]
+        no_private: bool,
         /// Name of the program to build
         #[clap(short, long)]
         program_name: Option<String>,
@@ -321,6 +327,12 @@ pub enum Command {
         /// Do not build the IDL
         #[clap(long)]
         no_idl: bool,
+        /// Remove non-semantic diagnostics and provenance from built program artifacts.
+        #[clap(long, conflicts_with = "no_private")]
+        private: bool,
+        /// Disable `[build] private = true` for this invocation.
+        #[clap(long, conflicts_with = "private")]
+        no_private: bool,
         /// Flag to keep the local validator running after tests
         /// to be able to check the transactions.
         #[clap(long)]
@@ -1404,6 +1416,8 @@ fn process_command(opts: Opts) -> Result<()> {
             idl,
             idl_ts,
             verifiable,
+            private,
+            no_private,
             program_name,
             solana_version,
             docker_image,
@@ -1419,6 +1433,7 @@ fn process_command(opts: Opts) -> Result<()> {
             idl,
             idl_ts,
             verifiable,
+            private_override(private, no_private),
             skip_lint,
             ignore_keys,
             program_name,
@@ -1501,6 +1516,8 @@ fn process_command(opts: Opts) -> Result<()> {
             skip_local_validator,
             skip_build,
             no_idl,
+            private,
+            no_private,
             detach,
             run,
             script,
@@ -1518,6 +1535,7 @@ fn process_command(opts: Opts) -> Result<()> {
             skip_build,
             skip_lint,
             no_idl,
+            private_override(private, no_private),
             detach,
             run,
             script,
@@ -1614,6 +1632,16 @@ fn process_command(opts: Opts) -> Result<()> {
         Command::Program { subcmd } => program::program(&opts.cfg_override, subcmd),
         Command::Codama { subcmd } => codama::entry(subcmd),
     }
+}
+
+fn private_override(private: bool, no_private: bool) -> Option<bool> {
+    private
+        .then_some(true)
+        .or_else(|| no_private.then_some(false))
+}
+
+fn resolve_private_setting(cli_override: Option<bool>, workspace_private: bool) -> bool {
+    cli_override.unwrap_or(workspace_private)
 }
 
 /// Cargo does not support nested workspaces. If `start` lives inside a
@@ -2169,6 +2197,7 @@ pub fn build(
     idl: Option<String>,
     idl_ts: Option<String>,
     verifiable: bool,
+    private: Option<bool>,
     skip_lint: bool,
     ignore_keys: bool,
     program_name: Option<String>,
@@ -2241,6 +2270,7 @@ pub fn build(
     let cargo = Manifest::discover()?;
     let build_config = BuildConfig {
         verifiable,
+        private: resolve_private_setting(private, cfg.build.private),
         solana_version: solana_version.or_else(|| cfg.toolchain.solana_version.clone()),
         docker_image: docker_image.unwrap_or_else(|| cfg.docker()),
         bootstrap,
@@ -2508,6 +2538,11 @@ fn build_cwd(
     skip_lint: bool,
     no_docs: bool,
 ) -> Result<Vec<PathBuf>> {
+    let private = build_config.private
+        || cargo_args_request_private(&cargo_args)
+        || manifest_enables_private_program(&cargo_toml)?;
+    let cargo_args = with_private_program_feature(cargo_args, private);
+
     match cargo_toml.parent() {
         None => return Err(anyhow!("Unable to find parent")),
         Some(p) => std::env::set_current_dir(p)?,
@@ -2938,6 +2973,45 @@ fn _build_cwd(
 
 /// Subcommand and any arguments to be passed to cargo
 const BUILD_SUBCOMMAND: &[&str] = &["build-sbf", "--tools-version", "v1.52"];
+
+fn cargo_args_request_private(cargo_args: &[String]) -> bool {
+    cargo_args.iter().any(|arg| {
+        arg.split([',', ' '])
+            .any(|feature| feature.trim() == "anchor-lang/private-program")
+    })
+}
+
+fn with_private_program_feature(mut cargo_args: Vec<String>, private: bool) -> Vec<String> {
+    if private && !cargo_args_request_private(&cargo_args) {
+        cargo_args.push("--features".to_owned());
+        cargo_args.push("anchor-lang/private-program".to_owned());
+    }
+    cargo_args
+}
+
+fn manifest_enables_private_program(manifest_path: &Path) -> Result<bool> {
+    let manifest_path = manifest_path
+        .canonicalize()
+        .with_context(|| format!("canonicalize {}", manifest_path.display()))?;
+    let mut command = MetadataCommand::new();
+    command.manifest_path(&manifest_path);
+    let metadata = command
+        .exec()
+        .with_context(|| format!("resolve Cargo features for {}", manifest_path.display()))?;
+    let package = metadata
+        .packages
+        .iter()
+        .find(|package| package.manifest_path.as_std_path() == manifest_path)
+        .ok_or_else(|| anyhow!("Cargo metadata did not include {}", manifest_path.display()))?;
+
+    Ok(package.dependencies.iter().any(|dependency| {
+        dependency.name == "anchor-lang"
+            && dependency
+                .features
+                .iter()
+                .any(|feature| feature.as_str() == "private-program")
+    }))
+}
 
 /// Run the configured SBF build command.
 pub fn cargo_build_sbf(cwd: Option<&Path>, extra_args: &[String]) -> Result<()> {
@@ -3948,6 +4022,7 @@ fn test(
     skip_build: bool,
     skip_lint: bool,
     no_idl: bool,
+    private: Option<bool>,
     detach: bool,
     tests_to_run: Vec<String>,
     script_name: Option<String>,
@@ -4037,6 +4112,7 @@ fn test(
                 None,
                 None,
                 false,
+                private,
                 skip_lint,
                 true,
                 program_name.clone(),
@@ -4247,6 +4323,7 @@ fn debugger_anchor_workspace(
             skip_build,
             skip_lint,
             true,
+            None,
             false,
             Vec::new(),
             None, // script_name — debugger drives test execution itself
@@ -6634,6 +6711,7 @@ fn localnet(
                 None,
                 None,
                 false,
+                None,
                 skip_lint,
                 ignore_keys,
                 None,
@@ -7227,6 +7305,86 @@ mod tests {
             panic!("expected localnet command");
         };
         assert_eq!(validator, ValidatorType::Surfpool);
+    }
+
+    #[test]
+    fn private_build_flags_parse_and_conflict() {
+        let opts = Opts::try_parse_from(["anchor", "build", "--private"]).unwrap();
+        let Command::Build {
+            private,
+            no_private,
+            ..
+        } = opts.command
+        else {
+            panic!("expected build command");
+        };
+        assert_eq!(private_override(private, no_private), Some(true));
+
+        let opts = Opts::try_parse_from(["anchor", "test", "--no-private"]).unwrap();
+        let Command::Test {
+            private,
+            no_private,
+            ..
+        } = opts.command
+        else {
+            panic!("expected test command");
+        };
+        assert_eq!(private_override(private, no_private), Some(false));
+
+        assert!(Opts::try_parse_from(["anchor", "build", "--private", "--no-private"]).is_err());
+    }
+
+    #[test]
+    fn private_feature_is_merged_with_cargo_arguments() {
+        let cargo_args = vec![
+            "--features".to_owned(),
+            "custom-one,custom-two".to_owned(),
+            "--no-default-features".to_owned(),
+        ];
+        let merged = with_private_program_feature(cargo_args.clone(), true);
+        assert!(merged.starts_with(&cargo_args));
+        assert_eq!(
+            &merged[cargo_args.len()..],
+            &["--features", "anchor-lang/private-program"]
+        );
+
+        let unchanged = with_private_program_feature(merged.clone(), true);
+        assert_eq!(unchanged, merged);
+        assert_eq!(
+            with_private_program_feature(cargo_args.clone(), false),
+            cargo_args
+        );
+    }
+
+    #[test]
+    fn private_cli_selection_overrides_workspace_config() {
+        assert!(resolve_private_setting(None, true));
+        assert!(!resolve_private_setting(None, false));
+        assert!(resolve_private_setting(Some(true), false));
+        assert!(!resolve_private_setting(Some(false), true));
+    }
+
+    #[test]
+    fn manifest_private_feature_is_detected() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src/lib.rs"), "pub fn fixture() {}\n").unwrap();
+        let lang_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("lang");
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"private-manifest-test\"\nversion = \"0.1.0\"\nedition = \
+                 \"2021\"\n\n[dependencies]\nanchor-lang = {{ path = {:?}, features = \
+                 [\"private-program\"] }}\n",
+                lang_path
+            ),
+        )
+        .unwrap();
+
+        assert!(manifest_enables_private_program(&dir.path().join("Cargo.toml")).unwrap());
     }
 
     #[test]

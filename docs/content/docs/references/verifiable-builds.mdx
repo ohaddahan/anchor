@@ -22,6 +22,15 @@ To produce a verifiable build, run
 anchor build --verifiable
 ```
 
+Private mode can use the same containerized build:
+
+```shell
+anchor build --verifiable --private
+```
+
+The private Cargo feature is applied inside the container, so the result
+remains deterministic when inputs are pinned.
+
 ## Verifying
 
 To verify a build against a program deployed on mainnet, run

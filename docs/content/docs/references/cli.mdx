@@ -104,6 +104,22 @@ Runs the build inside a docker image so that the output binary is deterministic
 single crate subdirectory within the workspace. For example,
 `programs/<my-program>/`.
 
+### Private program builds
+
+```shell
+anchor build --private
+anchor test --private
+```
+
+Private mode removes Anchor-generated diagnostic details, instruction-name
+logs, panic text, and nonessential security metadata. Numeric error codes,
+IDLs, account and instruction layouts, explicit application logs, and events
+are unchanged.
+
+Use `--no-private` to override `[build] private = true`. A program that enables
+the `anchor-lang/private-program` Cargo feature remains private because manifest
+features cannot be disabled by the CLI.
+
 <Callout title="Tip">
 It's possible to pass arguments to the underlying `cargo build-sbf` command with `-- <ARGS>`. For example:
 

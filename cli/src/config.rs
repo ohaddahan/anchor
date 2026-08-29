@@ -354,6 +354,7 @@ impl<T> std::ops::DerefMut for WithPath<T> {
 #[derive(Debug, Default)]
 pub struct Config {
     pub toolchain: ToolchainConfig,
+    pub build: AnchorBuildConfig,
     pub features: FeaturesConfig,
     pub provider: ProviderConfig,
     pub programs: ProgramsConfig,
@@ -372,6 +373,14 @@ pub struct Config {
     /// workspace. Emitted by `anchor init` for in-process test templates
     /// (litesvm / mollusk) where the test harness never opens an RPC.
     pub skip_local_validator: Option<bool>,
+}
+
+/// Persistent options for `anchor build` and the build phase of `anchor test`.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct AnchorBuildConfig {
+    /// Remove framework diagnostics and build provenance from SBF artifacts.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub private: bool,
 }
 
 #[derive(ValueEnum, Parser, Clone, Copy, PartialEq, Eq, Debug, AbsolutePath)]
@@ -642,6 +651,7 @@ pub enum BootstrapMode {
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
     pub verifiable: bool,
+    pub private: bool,
     pub solana_version: Option<String>,
     pub docker_image: String,
     pub bootstrap: BootstrapMode,
@@ -791,6 +801,8 @@ impl Config {
 #[derive(Debug, Serialize, Deserialize)]
 struct _Config {
     toolchain: Option<ToolchainConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    build: Option<AnchorBuildConfig>,
     features: Option<FeaturesConfig>,
     programs: Option<BTreeMap<String, BTreeMap<String, serde_json::Value>>>,
     provider: Provider,
@@ -889,6 +901,7 @@ impl fmt::Display for Config {
         };
         let cfg = _Config {
             toolchain: Some(self.toolchain.clone()),
+            build: self.build.private.then(|| self.build.clone()),
             features: Some(self.features.clone()),
             provider: Provider {
                 cluster: self.provider.cluster.clone(),
@@ -927,6 +940,7 @@ impl TryFrom<_Config> for Config {
     fn try_from(cfg: _Config) -> std::result::Result<Self, Self::Error> {
         Ok(Config {
             toolchain: cfg.toolchain.unwrap_or_default(),
+            build: cfg.build.unwrap_or_default(),
             features: cfg.features.unwrap_or_default(),
             provider: ProviderConfig {
                 cluster: cfg.provider.cluster,
@@ -2159,6 +2173,25 @@ amount = 2
         let string = BASE_CONFIG.to_owned() + "[features]\nskip-lint = true";
         let config = Config::from_str(&string).unwrap();
         assert!(config.features.skip_lint);
+    }
+
+    #[test]
+    fn build_private_round_trips() {
+        let toml = BASE_CONFIG.to_owned() + "[build]\nprivate = true\n";
+        let config = Config::from_str(&toml).unwrap();
+        assert!(config.build.private);
+
+        let serialized = config.to_string();
+        assert!(serialized.contains("[build]"));
+        assert!(serialized.contains("private = true"));
+        assert!(Config::from_str(&serialized).unwrap().build.private);
+    }
+
+    #[test]
+    fn default_build_config_is_not_serialized() {
+        let config = Config::from_str(BASE_CONFIG).unwrap();
+        assert!(!config.build.private);
+        assert!(!config.to_string().contains("[build]"));
     }
 
     #[test]
