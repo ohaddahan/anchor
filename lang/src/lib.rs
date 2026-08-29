@@ -618,7 +618,7 @@ pub mod __private {
     pub use {
         crate::{bpf_writer::BpfWriter, common::is_closed},
         anchor_attribute_account::ZeroCopyAccessor,
-        base64, bytemuck,
+        base64, bytemuck, solana_security_txt,
     };
 
     // Used to calculate the maximum between two expressions.

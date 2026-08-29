@@ -89,6 +89,7 @@ solana-sysvar = { workspace = true, features = ["bincode"] }
 solana-sysvar-id.workspace = true
 
 thiserror = "1"
+solana-security-txt = "1.1.3"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

@@ -2,6 +2,17 @@
 
 use {anchor_lang::prelude::*, std::cell::Cell};
 
+anchor_lang::program_security_txt!(
+    name: "Private fixture name",
+    project_url: "https://example.invalid/private-fixture",
+    contacts: "mailto:security@example.invalid",
+    policy: "https://example.invalid/policy",
+    source_code: "https://example.invalid/source",
+    source_release: "v1.2.3",
+    source_revision: "deadbeef",
+    auditors: "Private Auditor",
+);
+
 #[error_code]
 enum PrivateError {
     #[msg("private error message")]
@@ -48,4 +59,18 @@ fn discarded_diagnostics_are_not_evaluated() {
         "Instruction: Secret"
     });
     assert!(!evaluated.get());
+}
+
+#[test]
+fn security_txt_keeps_only_release_and_revision() {
+    assert!(SECURITY_TXT.contains("source_release\0v1.2.3\0"));
+    assert!(SECURITY_TXT.contains("source_revision\0deadbeef\0"));
+    for private_value in [
+        "Private fixture name",
+        "security@example.invalid",
+        "Private Auditor",
+        "source_code",
+    ] {
+        assert!(!SECURITY_TXT.contains(private_value));
+    }
 }
