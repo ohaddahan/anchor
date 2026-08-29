@@ -81,44 +81,6 @@ macro_rules! __anchor_with_account_name {
     }};
 }
 
-#[cfg(not(feature = "private-program"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __anchor_with_values {
-    ($error:expr, $values:expr) => {
-        ($error).with_values($values)
-    };
-}
-
-#[cfg(feature = "private-program")]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __anchor_with_values {
-    ($error:expr, $values:expr) => {{
-        let error = $error;
-        error
-    }};
-}
-
-#[cfg(not(feature = "private-program"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __anchor_with_pubkeys {
-    ($error:expr, $pubkeys:expr) => {
-        ($error).with_pubkeys($pubkeys)
-    };
-}
-
-#[cfg(feature = "private-program")]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __anchor_with_pubkeys {
-    ($error:expr, $pubkeys:expr) => {{
-        let error = $error;
-        error
-    }};
-}
-
 // `#[error_code]` macro below accesses `anchor_lang::error::...` so set up
 // a fake module for it.
 mod anchor_lang {

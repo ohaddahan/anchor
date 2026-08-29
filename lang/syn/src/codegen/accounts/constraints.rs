@@ -1844,20 +1844,10 @@ fn generate_custom_error(
     let account_name = account_name.to_string();
     let mut error = match custom_error {
         Some(error) => {
-            quote! {
-                anchor_lang::error::__anchor_with_account_name!(
-                    anchor_lang::error::Error::from(#error),
-                    #account_name
-                )
-            }
+            quote! { anchor_lang::error::Error::from(#error).with_account_name(#account_name) }
         }
         None => {
-            quote! {
-                anchor_lang::error::__anchor_with_account_name!(
-                    anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::#error),
-                    #account_name
-                )
-            }
+            quote! { anchor_lang::error::Error::from(anchor_lang::error::ErrorCode::#error).with_account_name(#account_name) }
         }
     };
 

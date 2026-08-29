@@ -9,6 +9,8 @@ normal_target_dir="$workspace_dir/target/normal-program-build"
 debug_target_dir="$workspace_dir/target/debug-program-build"
 custom_out_dir="$artifact_dir/custom-sbf-out"
 
+cd "$workspace_dir"
+
 cargo build --manifest-path "$repo_dir/Cargo.toml" -p anchor-cli --bin anchor
 mkdir -p "$artifact_dir"
 

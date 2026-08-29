@@ -422,12 +422,9 @@ fn generate_duplicate_mutable_checks(accs: &AccountsStruct) -> proc_macro2::Toke
                 if let Some(key) = #field_keys {
                     // Check for duplicates and insert the key and account name
                     if !__mutable_accounts.insert(key) {
-                        return Err(anchor_lang::error::__anchor_with_account_name!(
-                            anchor_lang::error::Error::from(
-                                anchor_lang::error::ErrorCode::ConstraintDuplicateMutableAccount
-                            ),
-                            #field_name_strs
-                        ));
+                        return Err(anchor_lang::error::Error::from(
+                            anchor_lang::error::ErrorCode::ConstraintDuplicateMutableAccount
+                        ).with_account_name(#field_name_strs));
                     }
                 }
             )*
