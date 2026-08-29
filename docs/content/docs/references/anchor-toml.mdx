@@ -39,6 +39,18 @@ Example:
 skip_local_validator = true
 ```
 
+## build
+
+Set `private = true` to use private program builds by default for both
+`anchor build` and the build phase of `anchor test`.
+
+```toml
+[build]
+private = true
+```
+
+An explicit `--private` or `--no-private` CLI flag overrides this setting.
+
 ## features
 
 ### resolution
