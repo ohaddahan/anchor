@@ -30,6 +30,7 @@ anchor build --verifiable --private
 
 The private Cargo feature and compiler settings are applied inside the
 container, so the result remains deterministic when inputs are pinned.
+The resulting artifact is then scrubbed and audited on the host before use.
 
 ## Verifying
 

@@ -68,6 +68,7 @@ mod flamegraph;
 mod keygen;
 mod legacy_idl;
 mod metadata;
+mod private_program;
 #[cfg(not(windows))]
 mod profile;
 mod program;
@@ -2600,6 +2601,7 @@ fn build_cwd_verifiable(
     cargo_args: Vec<String>,
     no_docs: bool,
 ) -> Result<Vec<PathBuf>> {
+    let binary_name = Manifest::from_path(&cargo_toml)?.lib_name()?;
     // Create output dirs.
     let workspace_dir = cfg.path().parent().unwrap().canonicalize()?;
     let target_dir = target_dir()?;
@@ -2633,6 +2635,18 @@ fn build_cwd_verifiable(
             Err(e)
         }
         Ok(_) => {
+            if build_config.private {
+                let artifact = target_dir
+                    .join("verifiable")
+                    .join(&binary_name)
+                    .with_extension("so");
+                private_program::finalize_artifact(
+                    &artifact,
+                    &binary_name,
+                    Some(Path::new("/workdir")),
+                )?;
+            }
+
             // Build the idl.
             println!("Extracting the IDL");
             let idl = generate_idl(cfg, skip_lint, no_docs, &cargo_args)?;
@@ -2965,7 +2979,11 @@ fn _build_cwd(
         std::process::exit(exit.status.code().unwrap_or(1));
     }
 
-    copy_sbf_artifact(binary_name, private, &cargo_args, &deploy_dir)?;
+    let artifact = copy_sbf_artifact(binary_name, private, &cargo_args, &deploy_dir)?;
+
+    if private {
+        private_program::finalize_artifact(&artifact, binary_name, cfg.path().parent())?;
+    }
 
     // Generate IDL
     if !no_idl {
