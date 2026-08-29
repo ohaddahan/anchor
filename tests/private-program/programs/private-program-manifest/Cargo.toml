@@ -1,0 +1,25 @@
+[package]
+name = "private-program-manifest"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "private_program_manifest"
+
+[features]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+no-entrypoint = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = { path = "../../../../lang", features = ["private-program"] }
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(target_os, values("solana"))']
+
