@@ -128,6 +128,12 @@ Private mode is incompatible with `cargo build-sbf --debug`. Size optimization
 remains separate and can still be selected explicitly with
 `anchor build --private -- --optimize-size`.
 
+After compilation, Anchor scrubs recognized source-path spans and audits the
+ELF before replacing the output. The build fails if debug or ordinary symbol
+sections, source paths, Anchor diagnostic templates, unexpected exports, or
+excess security metadata remain. It reports only aggregate string counts and
+does not print retained application strings.
+
 <Callout title="Tip">
 It's possible to pass arguments to the underlying `cargo build-sbf` command with `-- <ARGS>`. For example:
 
